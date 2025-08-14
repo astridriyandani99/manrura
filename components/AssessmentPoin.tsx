@@ -1,0 +1,268 @@
+import React, { useEffect, useState } from 'react';
+import type { PoinPenilaian, User, AssessmentScore, Evidence, AssessmentScores } from '../types';
+import { ArrowUpTrayIcon, PaperClipIcon, TrashIcon, PencilIcon, UserCircleIcon, CheckBadgeIcon } from './Icons';
+
+interface AssessmentPoinProps {
+  poin: PoinPenilaian;
+  currentUser: User;
+  scoreData: AssessmentScores | undefined;
+  onScoreChange: (poinId: string, role: 'wardStaff' | 'assessor', updates: Partial<AssessmentScore>) => void;
+  users: User[];
+}
+
+const scoreOptions = [
+  { value: 10, label: 'Terpenuhi Lengkap', color: 'bg-green-100 border-green-300 text-green-800', badge: 'bg-green-500' },
+  { value: 5, label: 'Terpenuhi Sebagian', color: 'bg-yellow-100 border-yellow-300 text-yellow-800', badge: 'bg-yellow-500' },
+  { value: 0, label: 'Tidak Terpenuhi', color: 'bg-red-100 border-red-300 text-red-800', badge: 'bg-red-500' },
+];
+
+// --- Helper Components (Defined outside main component to prevent re-renders) ---
+
+const EvidenceViewer: React.FC<{ evidence: Evidence | null | undefined; onRemove?: () => void; }> = ({ evidence, onRemove }) => {
+  if (!evidence) return null;
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-200">
+      <p className="text-sm font-medium text-slate-600 mb-1">Bukti Terlampir:</p>
+      <div className="flex items-center justify-between p-2 bg-slate-100 rounded-md border border-slate-200">
+        <a href={evidence.url} target="_blank" rel="noopener noreferrer" className="flex items-center text-sky-600 hover:underline text-sm truncate mr-2">
+          <PaperClipIcon className="w-4 h-4 mr-2 flex-shrink-0" />
+          <span className="truncate" title={evidence.name}>{evidence.name}</span>
+        </a>
+        {onRemove && (
+          <button onClick={onRemove} className="flex-shrink-0 text-red-500 hover:text-red-700 p-1 rounded-full transition-colors" aria-label="Remove evidence">
+            <TrashIcon className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ResultPanel: React.FC<{ title: string | null, icon: React.ReactNode, assessmentScore: AssessmentScore | undefined | null, assessorName?: string | null }> = ({ title, icon, assessmentScore, assessorName }) => {
+  if (!assessmentScore || assessmentScore.score === null || assessmentScore.score === undefined) {
+    // Return null instead of "Belum Dinilai" when title is explicitly null
+    if (title === null) return null;
+    return (
+      <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+        {title && <h4 className="font-semibold text-slate-700 text-sm mb-2 flex items-center">{icon}{title}</h4>}
+        <div className="py-1 px-3 bg-slate-200 text-slate-600 rounded-full text-xs font-medium inline-block">Belum Dinilai</div>
+      </div>
+    );
+  }
+  const scoreInfo = scoreOptions.find(opt => opt.value === assessmentScore.score);
+  return (
+    <div className={`p-4 rounded-lg border ${scoreInfo?.color ?? 'bg-white border-slate-200'}`}>
+      <div className="flex justify-between items-start">
+         {title && <h4 className="font-semibold text-slate-700 text-sm mb-3 flex items-center">{icon}{title}</h4>}
+        <div className="flex-shrink-0 ml-4">
+          <span className={`px-3 py-1 text-xs font-bold text-white ${scoreInfo?.badge ?? 'bg-slate-500'} rounded-full`}>
+            Skor: {assessmentScore.score}
+          </span>
+        </div>
+      </div>
+       {assessorName && (
+        <p className="text-xs text-slate-500 -mt-2 mb-2">Dinilai oleh: <span className="font-medium text-slate-600">{assessorName}</span></p>
+      )}
+      {assessmentScore.notes && (
+        <div className="mt-2 pt-2 border-t border-slate-300/50">
+          <p className="text-sm font-medium text-slate-600">Catatan:</p>
+          <p className="text-sm text-slate-700 whitespace-pre-wrap">{assessmentScore.notes}</p>
+        </div>
+      )}
+      <EvidenceViewer evidence={assessmentScore.evidence} />
+    </div>
+  );
+};
+
+const AssessmentEditor: React.FC<{
+  poinId: string;
+  assessmentScore: AssessmentScore | undefined | null;
+  onUpdate: (updates: Partial<AssessmentScore>) => void;
+  onCancel?: () => void;
+  showFileUpload: boolean;
+  currentUser: User;
+}> = ({ poinId, assessmentScore, onUpdate, onCancel, showFileUpload, currentUser }) => {
+    const currentScore = assessmentScore?.score ?? null;
+    const currentNotes = assessmentScore?.notes ?? '';
+    const currentEvidence = assessmentScore?.evidence;
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (currentEvidence?.url) URL.revokeObjectURL(currentEvidence.url);
+        const file = e.target.files?.[0];
+        if (file) {
+            onUpdate({ evidence: { name: file.name, url: URL.createObjectURL(file), type: file.type } });
+        }
+    };
+    const handleRemoveFile = () => {
+        if (currentEvidence?.url) URL.revokeObjectURL(currentEvidence.url);
+        onUpdate({ evidence: null });
+    };
+
+    return (
+        <div className="space-y-4">
+             <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-600">Skor:</p>
+                <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
+                    {scoreOptions.map(opt => (
+                    <label key={opt.value} className={`flex-1 p-2 border rounded-md cursor-pointer text-center text-sm transition-all duration-200 ${currentScore === opt.value ? `${opt.color} ring-2 ring-sky-500` : 'bg-white hover:bg-slate-50'}`}>
+                        <input
+                        type="radio"
+                        name={`score-${poinId}-${currentUser.role}`}
+                        value={opt.value}
+                        checked={currentScore === opt.value}
+                        onChange={() => {
+                            onUpdate({ score: opt.value });
+                            // For Assessor, auto-cancel editing after selection for faster workflow.
+                            if(onCancel && currentUser.role === 'Assessor') onCancel();
+                        }}
+                        className="sr-only"
+                        />
+                        {opt.label} ({opt.value})
+                    </label>
+                    ))}
+                </div>
+             </div>
+             <div>
+                <p className="text-sm font-medium text-slate-600 mb-1">Catatan:</p>
+                <textarea
+                    value={currentNotes}
+                    onChange={(e) => onUpdate({ notes: e.target.value })}
+                    placeholder="Tambahkan catatan observasi atau bukti..."
+                    className="w-full p-2 border border-slate-300 rounded-md text-sm focus:ring-sky-500 focus:border-sky-500 bg-white text-slate-800"
+                    rows={2}
+                />
+            </div>
+
+            <EvidenceViewer evidence={currentEvidence} onRemove={showFileUpload ? handleRemoveFile : undefined} />
+            
+            {showFileUpload && (
+                <div>
+                    <label htmlFor={`file-upload-${poinId}`} className="inline-flex items-center px-3 py-1.5 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 cursor-pointer transition-colors">
+                        <ArrowUpTrayIcon className="w-5 h-5 mr-2 text-slate-500"/>
+                        <span>{currentEvidence ? 'Ganti Bukti' : 'Unggah Bukti'}</span>
+                    </label>
+                    <input id={`file-upload-${poinId}`} type="file" className="sr-only" onChange={handleFileChange} accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"/>
+                    <p className="text-xs text-slate-500 mt-1">Dukung penilaian Anda dengan file (Gambar, PDF, Dokumen).</p>
+                </div>
+            )}
+             {onCancel && (
+                <button onClick={onCancel} className="text-sm text-slate-600 hover:text-slate-800">Batal</button>
+            )}
+        </div>
+    );
+}
+
+// --- Main Component ---
+
+const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scoreData, onScoreChange, users }) => {
+  const [isEditing, setIsEditing] = useState(false);
+
+  const wardStaffScore = scoreData?.wardStaff;
+  const assessorScore = scoreData?.assessor;
+  const assessor = assessorScore?.assessorId ? users.find(u => u.id === assessorScore.assessorId) : null;
+
+
+  // Cleanup effect for blob URLs
+  useEffect(() => {
+    const staffURL = wardStaffScore?.evidence?.url;
+    const assessorURL = assessorScore?.evidence?.url;
+    return () => {
+      if (staffURL) URL.revokeObjectURL(staffURL);
+      if (assessorURL) URL.revokeObjectURL(assessorURL);
+    };
+  }, [wardStaffScore?.evidence?.url, assessorScore?.evidence?.url]);
+  
+  const handleUpdate = (role: 'wardStaff' | 'assessor', updates: Partial<AssessmentScore>) => {
+    onScoreChange(poin.id, role, updates);
+  };
+  
+  const isLockedForStaff = assessorScore?.score !== null && assessorScore?.score !== undefined;
+
+  const basePoinInfo = (
+    <>
+      <p className="font-semibold text-sm text-slate-800">{poin.text}</p>
+      <p className="text-xs text-slate-500 mt-1 mb-3"><span className="font-medium">Bukti:</span> {poin.bukti}</p>
+    </>
+  );
+
+  switch (currentUser.role) {
+    case 'Ward Staff':
+      return (
+        <div className="p-4 bg-white rounded-lg border border-sky-200 shadow-sm">
+            {basePoinInfo}
+            {isLockedForStaff ? (
+                 <div className="mt-3 space-y-4">
+                    <div className="p-3 text-sm text-yellow-800 bg-yellow-100 border border-yellow-200 rounded-lg" role="alert">
+                      <span className="font-medium">Telah Divalidasi.</span> Poin penilaian ini telah divalidasi oleh asesor dan tidak dapat diubah lagi.
+                    </div>
+                    <ResultPanel title="Penilaian Anda" icon={<UserCircleIcon className="w-5 h-5 mr-2 text-slate-500"/>} assessmentScore={wardStaffScore}/>
+                    <ResultPanel title="Validasi & Catatan Asesor" icon={<CheckBadgeIcon className="w-5 h-5 mr-2 text-indigo-500"/>} assessmentScore={assessorScore} assessorName={assessor?.name}/>
+                 </div>
+            ) : (
+                <AssessmentEditor 
+                    poinId={poin.id}
+                    assessmentScore={wardStaffScore}
+                    onUpdate={(updates) => handleUpdate('wardStaff', updates)}
+                    showFileUpload={true}
+                    currentUser={currentUser}
+                />
+            )}
+        </div>
+      );
+
+    case 'Assessor':
+      return (
+        <div className="p-4 bg-white rounded-lg border border-indigo-200 shadow-sm space-y-4">
+           {basePoinInfo}
+           <ResultPanel title="Penilaian Staf" icon={<UserCircleIcon className="w-5 h-5 mr-2 text-slate-500"/>} assessmentScore={wardStaffScore}/>
+           <div className="p-4 bg-indigo-50/50 rounded-lg border border-indigo-200">
+                <div className="flex justify-between items-center mb-3">
+                     <h4 className="font-semibold text-indigo-800 text-sm flex items-center">
+                        <CheckBadgeIcon className="w-5 h-5 mr-2 text-indigo-500"/>Validasi Asesor
+                    </h4>
+                    {!isEditing && (
+                        <button onClick={() => setIsEditing(true)} className="flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+                            <PencilIcon className="w-4 h-4 mr-1"/>
+                            {assessorScore?.score !== null && assessorScore?.score !== undefined ? 'Ubah' : 'Nilai'}
+                        </button>
+                    )}
+                </div>
+                {isEditing ? (
+                     <AssessmentEditor 
+                        poinId={poin.id}
+                        assessmentScore={assessorScore}
+                        onUpdate={(updates) => handleUpdate('assessor', updates)}
+                        onCancel={() => setIsEditing(false)}
+                        showFileUpload={false}
+                        currentUser={currentUser}
+                    />
+                ) : (
+                    // Use null for title to hide "Belum Dinilai" text and panel, showing only the prompt text
+                    <ResultPanel title={null} icon={null} assessmentScore={assessorScore} />
+                )}
+                 {(!isEditing && (assessorScore?.score === null || assessorScore?.score === undefined)) && (
+                    <p className="text-sm text-slate-500">Klik 'Nilai' untuk memberikan validasi.</p>
+                )}
+           </div>
+        </div>
+      );
+
+    case 'Admin':
+      return (
+         <div className="p-4 bg-white rounded-lg border border-slate-200 shadow-sm space-y-4">
+           {basePoinInfo}
+           <ResultPanel title="Penilaian Staf" icon={<UserCircleIcon className="w-5 h-5 mr-2 text-slate-500"/>} assessmentScore={wardStaffScore}/>
+           <ResultPanel title="Validasi Asesor" icon={<CheckBadgeIcon className="w-5 h-5 mr-2 text-indigo-500"/>} assessmentScore={assessorScore} assessorName={assessor?.name}/>
+        </div>
+      );
+
+    default: // Should not happen with login system
+      return (
+        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+          {basePoinInfo}
+        </div>
+      );
+  }
+};
+
+export default AssessmentPoin;
