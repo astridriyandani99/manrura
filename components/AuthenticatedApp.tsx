@@ -4,7 +4,7 @@ import ContentDisplay from './ContentDisplay';
 import Chatbot from './Chatbot';
 import AdminDashboard from './AdminDashboard';
 import { manruraData } from '../data/manruraData';
-import type { Standard, User, Ward, AllAssessments, AssessmentScore } from '../types';
+import type { Standard, User, Ward, AllAssessments, AssessmentScore, AssessmentPeriod } from '../types';
 import { ArrowLeftIcon } from './Icons';
 import * as api from '../services/apiService';
 
@@ -16,6 +16,8 @@ interface AuthenticatedAppProps {
     setWards: React.Dispatch<React.SetStateAction<Ward[]>>;
     allAssessments: AllAssessments;
     setAllAssessments: React.Dispatch<React.SetStateAction<AllAssessments>>;
+    assessmentPeriods: AssessmentPeriod[];
+    setAssessmentPeriods: React.Dispatch<React.SetStateAction<AssessmentPeriod[]>>;
 }
 
 const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
@@ -25,36 +27,43 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
     wards,
     setWards,
     allAssessments,
-    setAllAssessments
+    setAllAssessments,
+    assessmentPeriods,
+    setAssessmentPeriods,
 }) => {
   const [selectedStandardId, setSelectedStandardId] = useState<string>('bab1');
   const [selectedStandard, setSelectedStandard] = useState<Standard | null>(manruraData[0]);
   
-  // Determine the selected ward based on user role
   const initialWardId = currentUser.role === 'Ward Staff' 
     ? currentUser.wardId 
     : (wards.length > 0 ? wards[0].id : '');
   const [selectedWardId, setSelectedWardId] = useState<string>(initialWardId || '');
 
-  // Admin-specific state for viewing ward details
   const [adminSelectedWardId, setAdminSelectedWardId] = useState<string | null>(null);
+  
+  // Determine active assessment period
+  const now = new Date();
+  const activePeriod = assessmentPeriods.find(p => {
+      const start = new Date(p.startDate);
+      const end = new Date(p.endDate);
+      end.setHours(23, 59, 59, 999); // Make end date inclusive for the entire day
+      return now >= start && now <= end;
+  });
+  const isAssessmentActive = !!activePeriod;
 
-  // Effect to handle role-based view changes
   useEffect(() => {
     if (currentUser.role !== 'Admin') {
       setAdminSelectedWardId(null);
     }
-    // If user is Ward Staff, lock the selected ward
     if (currentUser.role === 'Ward Staff' && currentUser.wardId) {
         setSelectedWardId(currentUser.wardId);
     }
   }, [currentUser]);
   
-  // Effect to update the standard content when ID changes
   useEffect(() => {
     if (selectedStandardId === 'admin_page') {
         setSelectedStandard(null);
-        setAdminSelectedWardId(null); // Clear detailed view when returning to dashboard
+        setAdminSelectedWardId(null);
     } else {
         const newStandard = manruraData.find(std => std.id === selectedStandardId) || null;
         setSelectedStandard(newStandard);
@@ -62,9 +71,12 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
   }, [selectedStandardId]);
 
   const handleScoreChange = (poinId: string, role: 'wardStaff' | 'assessor', updates: Partial<AssessmentScore>) => {
+    if (!isAssessmentActive && currentUser.role !== 'Admin') {
+      alert("Tidak dapat menyimpan perubahan. Tidak ada periode penilaian yang aktif.");
+      return;
+    }
     const wardIdToUpdate = adminSelectedWardId && currentUser.role === 'Admin' ? adminSelectedWardId : selectedWardId;
     
-    // Optimistic UI update
     setAllAssessments(prev => {
       const currentWardAssessments = prev[wardIdToUpdate] || {};
       const existingPoinAssessment = currentWardAssessments[poinId] || {};
@@ -82,11 +94,9 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
       };
     });
 
-    // Persist to backend
     api.updateAssessment(wardIdToUpdate, poinId, role, updates)
       .catch(err => {
         console.error("Failed to update assessment:", err);
-        // Here you could implement a rollback or show an error toast
       });
   };
 
@@ -100,7 +110,6 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
       await api.addWard(newWard);
     } catch(err) {
       console.error("Failed to add ward:", err);
-       // Rollback on failure
       setWards(prev => prev.filter(w => w.id !== newWard.id));
     }
   };
@@ -111,10 +120,20 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
       await api.addUser(user);
     } catch(err) {
       console.error("Failed to add user:", err);
-       // Rollback on failure
       setUsers(prev => prev.filter(u => u.id !== user.id));
     }
   };
+  
+  const addAssessmentPeriod = async (period: Omit<AssessmentPeriod, 'id'>) => {
+    try {
+      const newPeriod = await api.addAssessmentPeriod(period);
+      setAssessmentPeriods(prev => [...prev, newPeriod].sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
+    } catch (err) {
+      console.error("Failed to add assessment period:", err);
+      // No rollback needed as we only set state on success
+    }
+  };
+
 
   const handleAdminSelectWard = (wardId: string) => {
     setAdminSelectedWardId(wardId);
@@ -127,12 +146,11 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
     setSelectedStandardId('admin_page');
   };
   
-  // Determine which assessment data to display
   const isViewingAsAdminDetail = currentUser.role === 'Admin' && adminSelectedWardId;
   const wardIdForDisplay = isViewingAsAdminDetail ? adminSelectedWardId : selectedWardId;
   const assessmentDataForDisplay = allAssessments[wardIdForDisplay!] || {};
   const adminSelectedWard = adminSelectedWardId ? wards.find(w => w.id === adminSelectedWardId) : null;
-  const isReadOnly = currentUser.role === 'Admin';
+  const isReadOnly = currentUser.role === 'Admin' || !isAssessmentActive;
 
   return (
     <div className="flex h-screen font-sans antialiased">
@@ -146,15 +164,23 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         setSelectedWardId={setSelectedWardId}
       />
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-100">
+        {!isAssessmentActive && currentUser.role !== 'Admin' && (
+            <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-6 rounded-r-lg" role="alert">
+              <p className="font-bold">Periode Penilaian Tidak Aktif</p>
+              <p>Saat ini tidak ada periode penilaian yang sedang berlangsung. Anda hanya dapat melihat data dan tidak dapat mengubah atau memasukkan skor baru.</p>
+            </div>
+        )}
         {currentUser.role === 'Admin' && (!adminSelectedWardId || selectedStandardId === 'admin_page') ? (
             <AdminDashboard 
                 wards={wards} 
                 allUsers={allUsers}
                 allAssessments={allAssessments}
                 manruraData={manruraData}
+                assessmentPeriods={assessmentPeriods}
                 onAddWard={addWard}
                 onAddUser={addUser}
                 onSelectWard={handleAdminSelectWard}
+                onAddAssessmentPeriod={addAssessmentPeriod}
             />
         ) : isViewingAsAdminDetail && selectedStandard ? ( // Admin viewing specific ward
             <div>
@@ -176,6 +202,7 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
                     assessmentData={assessmentDataForDisplay}
                     onScoreChange={() => {}} // Read-only for Admin
                     users={allUsers}
+                    isAssessmentActive={true} // Admin can always see content as if active
                 />
             </div>
         ) : ( // Assessor or Ward Staff view
@@ -183,8 +210,9 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             standard={selectedStandard}
             currentUser={currentUser}
             assessmentData={assessmentDataForDisplay}
-            onScoreChange={isReadOnly ? ()=>{} : handleScoreChange}
+            onScoreChange={handleScoreChange}
             users={allUsers}
+            isAssessmentActive={isAssessmentActive}
           />
         )}
       </main>

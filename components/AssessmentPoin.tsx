@@ -9,6 +9,7 @@ interface AssessmentPoinProps {
   scoreData: AssessmentScores | undefined;
   onScoreChange: (poinId: string, role: 'wardStaff' | 'assessor', updates: Partial<AssessmentScore>) => void;
   users: User[];
+  isAssessmentActive: boolean;
 }
 
 const scoreOptions = [
@@ -165,7 +166,7 @@ const AssessmentEditor: React.FC<{
 
 // --- Main Component ---
 
-const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scoreData, onScoreChange, users }) => {
+const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scoreData, onScoreChange, users, isAssessmentActive }) => {
   const [isEditing, setIsEditing] = useState(false);
 
   const wardStaffScore = scoreData?.wardStaff;
@@ -177,6 +178,8 @@ const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scor
   };
   
   const isLockedForStaff = assessorScore?.score !== null && assessorScore?.score !== undefined;
+  const canEdit = isAssessmentActive && !isLockedForStaff;
+
 
   const basePoinInfo = (
     <>
@@ -190,15 +193,7 @@ const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scor
       return (
         <div className="p-4 bg-white rounded-lg border border-sky-200 shadow-sm">
             {basePoinInfo}
-            {isLockedForStaff ? (
-                 <div className="mt-3 space-y-4">
-                    <div className="p-3 text-sm text-yellow-800 bg-yellow-100 border border-yellow-200 rounded-lg" role="alert">
-                      <span className="font-medium">Telah Divalidasi.</span> Poin penilaian ini telah divalidasi oleh asesor dan tidak dapat diubah lagi.
-                    </div>
-                    <ResultPanel title="Penilaian Anda" icon={<UserCircleIcon className="w-5 h-5 mr-2 text-slate-500"/>} assessmentScore={wardStaffScore}/>
-                    <ResultPanel title="Validasi & Catatan Asesor" icon={<CheckBadgeIcon className="w-5 h-5 mr-2 text-indigo-500"/>} assessmentScore={assessorScore} assessorName={assessor?.name}/>
-                 </div>
-            ) : (
+             {canEdit ? (
                 <AssessmentEditor 
                     poinId={poin.id}
                     assessmentScore={wardStaffScore}
@@ -206,6 +201,16 @@ const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scor
                     showFileUpload={true}
                     currentUser={currentUser}
                 />
+            ) : (
+                 <div className="mt-3 space-y-4">
+                    {isLockedForStaff && (
+                         <div className="p-3 text-sm text-yellow-800 bg-yellow-100 border border-yellow-200 rounded-lg" role="alert">
+                            <span className="font-medium">Telah Divalidasi.</span> Poin penilaian ini telah divalidasi oleh asesor dan tidak dapat diubah lagi.
+                        </div>
+                    )}
+                    <ResultPanel title="Penilaian Anda" icon={<UserCircleIcon className="w-5 h-5 mr-2 text-slate-500"/>} assessmentScore={wardStaffScore}/>
+                    {assessorScore && <ResultPanel title="Validasi & Catatan Asesor" icon={<CheckBadgeIcon className="w-5 h-5 mr-2 text-indigo-500"/>} assessmentScore={assessorScore} assessorName={assessor?.name}/>}
+                 </div>
             )}
         </div>
       );
@@ -221,7 +226,12 @@ const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scor
                         <CheckBadgeIcon className="w-5 h-5 mr-2 text-indigo-500"/>Validasi Asesor
                     </h4>
                     {!isEditing && (
-                        <button onClick={() => setIsEditing(true)} className="flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+                        <button 
+                            onClick={() => setIsEditing(true)} 
+                            className="flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium disabled:text-slate-400 disabled:cursor-not-allowed"
+                            disabled={!isAssessmentActive}
+                            title={!isAssessmentActive ? "Penilaian hanya bisa dilakukan selama periode aktif" : ""}
+                        >
                             <PencilIcon className="w-4 h-4 mr-1"/>
                             {assessorScore?.score !== null && assessorScore?.score !== undefined ? 'Ubah' : 'Nilai'}
                         </button>

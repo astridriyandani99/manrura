@@ -3,7 +3,7 @@ import { useAuth } from './contexts/AuthContext';
 import LoginScreen from './components/LoginScreen';
 import AuthenticatedApp from './components/AuthenticatedApp';
 import { getAllData } from './services/apiService';
-import type { User, Ward, AllAssessments } from './types';
+import type { User, Ward, AllAssessments, AssessmentPeriod } from './types';
 import PublicLandingPage from './components/PublicLandingPage';
 
 const App: React.FC = () => {
@@ -12,6 +12,7 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [wards, setWards] = useState<Ward[]>([]);
   const [allAssessments, setAllAssessments] = useState<AllAssessments>({});
+  const [assessmentPeriods, setAssessmentPeriods] = useState<AssessmentPeriod[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'landing' | 'login'>('landing');
@@ -25,6 +26,7 @@ const App: React.FC = () => {
         setUsers(data.users || []);
         setWards(data.wards || []);
         setAllAssessments(data.allAssessments || {});
+        setAssessmentPeriods(data.assessmentPeriods || []);
       } catch (err) {
         if (err instanceof Error && err.message.includes('CONFIG_ERROR: SCRIPT_URL')) {
             setError(
@@ -89,6 +91,8 @@ const App: React.FC = () => {
       setWards={setWards}
       allAssessments={allAssessments}
       setAllAssessments={setAllAssessments}
+      assessmentPeriods={assessmentPeriods}
+      setAssessmentPeriods={setAssessmentPeriods}
     />
   );
 };

@@ -10,6 +10,7 @@ interface ContentDisplayProps {
   assessmentData: AssessmentData;
   onScoreChange: (poinId: string, role: 'wardStaff' | 'assessor', updates: Partial<AssessmentScore>) => void;
   users: User[];
+  isAssessmentActive: boolean;
 }
 
 const ElementoPenilaianCard: React.FC<{ 
@@ -18,7 +19,8 @@ const ElementoPenilaianCard: React.FC<{
   assessmentData: AssessmentData;
   onScoreChange: (poinId: string, role: 'wardStaff' | 'assessor', updates: Partial<AssessmentScore>) => void;
   users: User[];
-}> = ({ element, currentUser, assessmentData, onScoreChange, users }) => {
+  isAssessmentActive: boolean;
+}> = ({ element, currentUser, assessmentData, onScoreChange, users, isAssessmentActive }) => {
   const [isOpen, setIsOpen] = useState(true); // Default to open for better usability
 
   return (
@@ -43,6 +45,7 @@ const ElementoPenilaianCard: React.FC<{
                 scoreData={assessmentData[p.id]}
                 onScoreChange={onScoreChange}
                 users={users}
+                isAssessmentActive={isAssessmentActive}
               />
             ))}
           </div>
@@ -52,7 +55,7 @@ const ElementoPenilaianCard: React.FC<{
   );
 };
 
-const ContentDisplay: React.FC<ContentDisplayProps> = ({ standard, currentUser, assessmentData, onScoreChange, users }) => {
+const ContentDisplay: React.FC<ContentDisplayProps> = ({ standard, currentUser, assessmentData, onScoreChange, users, isAssessmentActive }) => {
   if (!standard) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -82,6 +85,7 @@ const ContentDisplay: React.FC<ContentDisplayProps> = ({ standard, currentUser, 
             assessmentData={assessmentData}
             onScoreChange={onScoreChange}
             users={users}
+            isAssessmentActive={isAssessmentActive}
            />
         ))}
       </div>

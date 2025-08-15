@@ -1,16 +1,19 @@
 import React from 'react';
-import type { Ward, User, AllAssessments, Standard } from '../types';
+import type { Ward, User, AllAssessments, Standard, AssessmentPeriod } from '../types';
 import { BuildingOfficeIcon, UsersIcon, ChartBarSquareIcon, EyeIcon } from './Icons';
 import AccountManagement from './AccountManagement';
+import AssessmentPeriodManagement from './AssessmentPeriodManagement';
 
 interface AdminDashboardProps {
     wards: Ward[];
     allUsers: User[];
     allAssessments: AllAssessments;
     manruraData: Standard[];
+    assessmentPeriods: AssessmentPeriod[];
     onAddWard: (name: string) => void;
     onAddUser: (user: User) => void;
     onSelectWard: (wardId: string) => void;
+    onAddAssessmentPeriod: (period: Omit<AssessmentPeriod, 'id'>) => void;
 }
 
 const KpiCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode }> = ({ title, value, icon }) => (
@@ -39,7 +42,17 @@ const ProgressBar: React.FC<{ value: number }> = ({ value }) => (
 );
 
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ wards, allUsers, allAssessments, manruraData, onAddWard, onAddUser, onSelectWard }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
+    wards, 
+    allUsers, 
+    allAssessments, 
+    manruraData,
+    assessmentPeriods,
+    onAddWard, 
+    onAddUser, 
+    onSelectWard,
+    onAddAssessmentPeriod
+ }) => {
     
     const assessors = allUsers.filter(u => u.role === 'Assessor');
     const allPoinIds = manruraData.flatMap(std => std.elements.flatMap(el => el.poin.map(p => p.id)));
@@ -133,12 +146,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ wards, allUsers, allAss
                 </div>
             </div>
             
-            <AccountManagement 
-                wards={wards} 
-                allUsers={allUsers}
-                onAddWard={onAddWard}
-                onAddUser={onAddUser}
-            />
+            <div className="space-y-8">
+                <AssessmentPeriodManagement 
+                    periods={assessmentPeriods}
+                    onAddPeriod={onAddAssessmentPeriod}
+                />
+                <AccountManagement 
+                    wards={wards} 
+                    allUsers={allUsers}
+                    onAddWard={onAddWard}
+                    onAddUser={onAddUser}
+                />
+            </div>
         </div>
     );
 };

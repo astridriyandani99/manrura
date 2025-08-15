@@ -61,5 +61,12 @@ export interface User {
   wardId?: string; // Only for 'Ward Staff' role
 }
 
+export interface AssessmentPeriod {
+  id: string;
+  name: string;
+  startDate: string; // ISO string format
+  endDate: string;   // ISO string format
+}
+
 
 export type AllAssessments = Record<string, AssessmentData>; // Keyed by Ward ID

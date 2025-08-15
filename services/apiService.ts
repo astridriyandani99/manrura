@@ -1,4 +1,4 @@
-import type { User, Ward, AllAssessments, AssessmentScore, Evidence } from '../types';
+import type { User, Ward, AllAssessments, AssessmentScore, Evidence, AssessmentPeriod } from '../types';
 
 // =====================================================================================
 // !! PENTING !! - TEMPELKAN URL FINAL GOOGLE APPS SCRIPT ANDA DI BAWAH INI
@@ -56,7 +56,7 @@ async function apiRequest(action: string, payload: any = {}): Promise<any> {
 
 // --- Public API Functions ---
 
-export const getAllData = async (): Promise<{ users: User[], wards: Ward[], allAssessments: AllAssessments }> => {
+export const getAllData = async (): Promise<{ users: User[], wards: Ward[], allAssessments: AllAssessments, assessmentPeriods: AssessmentPeriod[] }> => {
     return apiRequest('getAllData');
 };
 
@@ -66,6 +66,10 @@ export const addUser = async (user: User): Promise<User> => {
 
 export const addWard = async (ward: Omit<Ward, 'id'> & { id?: string }): Promise<Ward> => {
     return apiRequest('addWard', ward);
+};
+
+export const addAssessmentPeriod = async (period: Omit<AssessmentPeriod, 'id'>): Promise<AssessmentPeriod> => {
+    return apiRequest('addAssessmentPeriod', period);
 };
 
 export const updateAssessment = async (
