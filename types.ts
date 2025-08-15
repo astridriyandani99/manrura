@@ -23,8 +23,9 @@ export type UserRole = 'Assessor' | 'Ward Staff' | 'Admin';
 
 export interface Evidence {
   name: string;
-  url: string; // Blob URL for local preview
+  url: string; // Permanent Google Drive URL
   type: string;
+  fileId: string; // Google Drive File ID
 }
 
 export interface AssessmentScore {

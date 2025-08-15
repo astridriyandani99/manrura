@@ -6,6 +6,7 @@ import AdminDashboard from './AdminDashboard';
 import { manruraData } from '../data/manruraData';
 import type { Standard, User, Ward, AllAssessments, AssessmentScore } from '../types';
 import { ArrowLeftIcon } from './Icons';
+import * as api from '../services/apiService';
 
 interface AuthenticatedAppProps {
     currentUser: User;
@@ -61,47 +62,58 @@ const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
   }, [selectedStandardId]);
 
   const handleScoreChange = (poinId: string, role: 'wardStaff' | 'assessor', updates: Partial<AssessmentScore>) => {
+    const wardIdToUpdate = adminSelectedWardId && currentUser.role === 'Admin' ? adminSelectedWardId : selectedWardId;
+    
+    // Optimistic UI update
     setAllAssessments(prev => {
-      const wardIdToUpdate = adminSelectedWardId && currentUser.role === 'Admin' ? adminSelectedWardId : selectedWardId;
       const currentWardAssessments = prev[wardIdToUpdate] || {};
       const existingPoinAssessment = currentWardAssessments[poinId] || {};
-      
       const existingRoleScore = existingPoinAssessment[role] || { score: null, notes: '', evidence: null };
 
-      const updatedRoleScore = {
-        ...existingRoleScore,
-        ...updates
-      };
-
+      const updatedRoleScore = { ...existingRoleScore, ...updates };
       if (role === 'assessor') {
         updatedRoleScore.assessorId = currentUser.id;
       }
-
-      const updatedPoinAssessment = {
-        ...existingPoinAssessment,
-        [role]: updatedRoleScore
-      };
+      const updatedPoinAssessment = { ...existingPoinAssessment, [role]: updatedRoleScore };
 
       return {
         ...prev,
-        [wardIdToUpdate]: {
-          ...currentWardAssessments,
-          [poinId]: updatedPoinAssessment
-        }
+        [wardIdToUpdate]: { ...currentWardAssessments, [poinId]: updatedPoinAssessment }
       };
     });
+
+    // Persist to backend
+    api.updateAssessment(wardIdToUpdate, poinId, role, updates)
+      .catch(err => {
+        console.error("Failed to update assessment:", err);
+        // Here you could implement a rollback or show an error toast
+      });
   };
 
-  const addWard = (wardName: string) => {
+  const addWard = async (wardName: string) => {
     const newWard: Ward = {
       id: `ward-${Date.now()}`,
       name: wardName,
     };
     setWards(prev => [...prev, newWard]);
+    try {
+      await api.addWard(newWard);
+    } catch(err) {
+      console.error("Failed to add ward:", err);
+       // Rollback on failure
+      setWards(prev => prev.filter(w => w.id !== newWard.id));
+    }
   };
 
-  const addUser = (user: User) => {
+  const addUser = async (user: User) => {
     setUsers(prev => [...prev, user]);
+     try {
+      await api.addUser(user);
+    } catch(err) {
+      console.error("Failed to add user:", err);
+       // Rollback on failure
+      setUsers(prev => prev.filter(u => u.id !== user.id));
+    }
   };
 
   const handleAdminSelectWard = (wardId: string) => {

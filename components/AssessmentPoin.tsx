@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import type { PoinPenilaian, User, AssessmentScore, Evidence, AssessmentScores } from '../types';
 import { ArrowUpTrayIcon, PaperClipIcon, TrashIcon, PencilIcon, UserCircleIcon, CheckBadgeIcon } from './Icons';
+import { uploadFile } from '../services/apiService';
 
 interface AssessmentPoinProps {
   poin: PoinPenilaian;
@@ -16,7 +17,7 @@ const scoreOptions = [
   { value: 0, label: 'Tidak Terpenuhi', color: 'bg-red-100 border-red-300 text-red-800', badge: 'bg-red-500' },
 ];
 
-// --- Helper Components (Defined outside main component to prevent re-renders) ---
+// --- Helper Components ---
 
 const EvidenceViewer: React.FC<{ evidence: Evidence | null | undefined; onRemove?: () => void; }> = ({ evidence, onRemove }) => {
   if (!evidence) return null;
@@ -40,7 +41,6 @@ const EvidenceViewer: React.FC<{ evidence: Evidence | null | undefined; onRemove
 
 const ResultPanel: React.FC<{ title: string | null, icon: React.ReactNode, assessmentScore: AssessmentScore | undefined | null, assessorName?: string | null }> = ({ title, icon, assessmentScore, assessorName }) => {
   if (!assessmentScore || assessmentScore.score === null || assessmentScore.score === undefined) {
-    // Return null instead of "Belum Dinilai" when title is explicitly null
     if (title === null) return null;
     return (
       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -82,19 +82,30 @@ const AssessmentEditor: React.FC<{
   showFileUpload: boolean;
   currentUser: User;
 }> = ({ poinId, assessmentScore, onUpdate, onCancel, showFileUpload, currentUser }) => {
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+
     const currentScore = assessmentScore?.score ?? null;
     const currentNotes = assessmentScore?.notes ?? '';
     const currentEvidence = assessmentScore?.evidence;
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (currentEvidence?.url) URL.revokeObjectURL(currentEvidence.url);
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            onUpdate({ evidence: { name: file.name, url: URL.createObjectURL(file), type: file.type } });
+            setIsUploading(true);
+            setUploadError(null);
+            try {
+                const uploadedEvidence = await uploadFile(file);
+                onUpdate({ evidence: uploadedEvidence });
+            } catch (error) {
+                setUploadError("File upload failed. Please try again.");
+                console.error(error);
+            } finally {
+                setIsUploading(false);
+            }
         }
     };
     const handleRemoveFile = () => {
-        if (currentEvidence?.url) URL.revokeObjectURL(currentEvidence.url);
         onUpdate({ evidence: null });
     };
 
@@ -112,7 +123,6 @@ const AssessmentEditor: React.FC<{
                         checked={currentScore === opt.value}
                         onChange={() => {
                             onUpdate({ score: opt.value });
-                            // For Assessor, auto-cancel editing after selection for faster workflow.
                             if(onCancel && currentUser.role === 'Assessor') onCancel();
                         }}
                         className="sr-only"
@@ -137,12 +147,13 @@ const AssessmentEditor: React.FC<{
             
             {showFileUpload && (
                 <div>
-                    <label htmlFor={`file-upload-${poinId}`} className="inline-flex items-center px-3 py-1.5 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 cursor-pointer transition-colors">
-                        <ArrowUpTrayIcon className="w-5 h-5 mr-2 text-slate-500"/>
-                        <span>{currentEvidence ? 'Ganti Bukti' : 'Unggah Bukti'}</span>
+                    <label htmlFor={`file-upload-${poinId}`} className={`inline-flex items-center px-3 py-1.5 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 transition-colors ${isUploading ? 'cursor-not-allowed bg-slate-200' : 'cursor-pointer'}`}>
+                        <ArrowUpTrayIcon className={`w-5 h-5 mr-2 text-slate-500 ${isUploading ? 'animate-pulse' : ''}`}/>
+                        <span>{isUploading ? 'Uploading...' : (currentEvidence ? 'Ganti Bukti' : 'Unggah Bukti')}</span>
                     </label>
-                    <input id={`file-upload-${poinId}`} type="file" className="sr-only" onChange={handleFileChange} accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"/>
+                    <input id={`file-upload-${poinId}`} type="file" className="sr-only" onChange={handleFileChange} disabled={isUploading} accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"/>
                     <p className="text-xs text-slate-500 mt-1">Dukung penilaian Anda dengan file (Gambar, PDF, Dokumen).</p>
+                    {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
                 </div>
             )}
              {onCancel && (
@@ -161,17 +172,6 @@ const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scor
   const assessorScore = scoreData?.assessor;
   const assessor = assessorScore?.assessorId ? users.find(u => u.id === assessorScore.assessorId) : null;
 
-
-  // Cleanup effect for blob URLs
-  useEffect(() => {
-    const staffURL = wardStaffScore?.evidence?.url;
-    const assessorURL = assessorScore?.evidence?.url;
-    return () => {
-      if (staffURL) URL.revokeObjectURL(staffURL);
-      if (assessorURL) URL.revokeObjectURL(assessorURL);
-    };
-  }, [wardStaffScore?.evidence?.url, assessorScore?.evidence?.url]);
-  
   const handleUpdate = (role: 'wardStaff' | 'assessor', updates: Partial<AssessmentScore>) => {
     onScoreChange(poin.id, role, updates);
   };
@@ -237,7 +237,6 @@ const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scor
                         currentUser={currentUser}
                     />
                 ) : (
-                    // Use null for title to hide "Belum Dinilai" text and panel, showing only the prompt text
                     <ResultPanel title={null} icon={null} assessmentScore={assessorScore} />
                 )}
                  {(!isEditing && (assessorScore?.score === null || assessorScore?.score === undefined)) && (
@@ -256,7 +255,7 @@ const AssessmentPoin: React.FC<AssessmentPoinProps> = ({ poin, currentUser, scor
         </div>
       );
 
-    default: // Should not happen with login system
+    default:
       return (
         <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
           {basePoinInfo}
